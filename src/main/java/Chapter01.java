@@ -46,10 +46,12 @@ public class Chapter01 {
 
 
     private String postArticle(Jedis conn, String user, String title, String link) {
+        //生成一个文章的id
         String articleId = String.valueOf(conn.incr("article:"));
-
         String voted = "voted:" + articleId;
+        //将用户添加到文章的已经投票的用户名单
         conn.sadd(voted, user);
+        //设置名单的过期时间
         conn.expire(voted, ONE_WEEK_IN_SECONDS);
 
         long now = System.currentTimeMillis() / 1000;
@@ -60,8 +62,11 @@ public class Chapter01 {
         articleData.put("user", user);
         articleData.put("now", String.valueOf(now));
         articleData.put("votes", "1");
+        //发布文章
         conn.hmset(article, articleData);
+        //发布文章的分数
         conn.zadd("score:", now + VOTE_SCORE, article);
+        //发布文章的时间
         conn.zadd("time:", now, article);
 
         return articleId;
@@ -69,13 +74,17 @@ public class Chapter01 {
 
     private void articleVote(Jedis conn, String user, String article) {
         long cutoff = (System.currentTimeMillis() / 1000) - ONE_WEEK_IN_SECONDS;
+        //获取文章发布时间(分数),一周之前的直接返回不能投票
         if (conn.zscore("time:", article) < cutoff) {
             return;
         }
-
+        //取出文章id
         String articleId = article.substring(article.indexOf(':') + 1);
+        //将用户加入投票者的集合
         if (conn.sadd("voted:" + articleId, user) == 1) {
+            //增加文章分数
             conn.zincrby("score:", VOTE_SCORE, article);
+            //文章投票数量加1
             conn.hincrBy(article, "votes", 1);
         }
     }
@@ -88,10 +97,11 @@ public class Chapter01 {
     private List<Map<String, String>> getArticles(Jedis conn, int page, String order) {
         int start = (page - 1) * ARTICLES_PER_PAGE;
         int end = start + ARTICLES_PER_PAGE - 1;
-
+        //取出文章的多个ID
         Set<String> ids = conn.zrevrange(order, start, end);
         List<Map<String, String>> articles = new ArrayList<Map<String, String>>();
         for (String id : ids) {
+            //获取该文章所有信息
             Map<String, String> articleData = conn.hgetAll(id);
             articleData.put("id", id);
             articles.add(articleData);
@@ -112,12 +122,16 @@ public class Chapter01 {
     }
 
     private List<Map<String, String>> getGroupArticles(Jedis conn, String group, int page, String order) {
+        //为每个群组的每种排序顺序都创建一个键
         String key = order + group;
+        //检查是否有已缓存的排序结果,如果没有就进行排序
         if (!conn.exists(key)) {
+            //根据评分或者时间对群组的文章进行排序
             ZParams params = new ZParams().aggregate(ZParams.Aggregate.MAX);
             conn.zinterstore(key, params, "group:" + group, order);
             conn.expire(key, 60);
         }
+        //分页获取文章
         return getArticles(conn, page, key);
     }
 
