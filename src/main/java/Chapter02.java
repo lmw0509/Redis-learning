@@ -7,16 +7,12 @@ import java.net.URL;
 import java.util.*;
 
 public class Chapter02 {
-    public static final void main(String[] args)
-        throws InterruptedException
-    {
+    private static void main(String[] args) throws InterruptedException {
         new Chapter02().run();
     }
 
-    public void run()
-        throws InterruptedException
-    {
-        Jedis conn = new Jedis("localhost");
+    private void run() throws InterruptedException {
+        Jedis conn = new Jedis("192.168.74.139", 6379);
         conn.select(15);
 
         testLoginCookies(conn);
@@ -25,9 +21,7 @@ public class Chapter02 {
         testCacheRequest(conn);
     }
 
-    public void testLoginCookies(Jedis conn)
-        throws InterruptedException
-    {
+    private void testLoginCookies(Jedis conn) throws InterruptedException {
         System.out.println("\n----- testLoginCookies -----");
         String token = UUID.randomUUID().toString();
 
@@ -50,7 +44,7 @@ public class Chapter02 {
         Thread.sleep(1000);
         thread.quit();
         Thread.sleep(2000);
-        if (thread.isAlive()){
+        if (thread.isAlive()) {
             throw new RuntimeException("The clean sessions thread is still alive?!?");
         }
 
@@ -59,9 +53,8 @@ public class Chapter02 {
         assert s == 0;
     }
 
-    public void testShopppingCartCookies(Jedis conn)
-        throws InterruptedException
-    {
+    private void testShopppingCartCookies(Jedis conn)
+            throws InterruptedException {
         System.out.println("\n----- testShopppingCartCookies -----");
         String token = UUID.randomUUID().toString();
 
@@ -69,9 +62,9 @@ public class Chapter02 {
         updateToken(conn, token, "username", "itemX");
         System.out.println("And add an item to the shopping cart");
         addToCart(conn, token, "itemY", 3);
-        Map<String,String> r = conn.hgetAll("cart:" + token);
+        Map<String, String> r = conn.hgetAll("cart:" + token);
         System.out.println("Our shopping cart currently has:");
-        for (Map.Entry<String,String> entry : r.entrySet()){
+        for (Map.Entry<String, String> entry : r.entrySet()) {
             System.out.println("  " + entry.getKey() + ": " + entry.getValue());
         }
         System.out.println();
@@ -84,27 +77,26 @@ public class Chapter02 {
         Thread.sleep(1000);
         thread.quit();
         Thread.sleep(2000);
-        if (thread.isAlive()){
+        if (thread.isAlive()) {
             throw new RuntimeException("The clean sessions thread is still alive?!?");
         }
 
         r = conn.hgetAll("cart:" + token);
         System.out.println("Our shopping cart now contains:");
-        for (Map.Entry<String,String> entry : r.entrySet()){
+        for (Map.Entry<String, String> entry : r.entrySet()) {
             System.out.println("  " + entry.getKey() + ": " + entry.getValue());
         }
         assert r.size() == 0;
     }
 
-    public void testCacheRows(Jedis conn)
-        throws InterruptedException
-    {
+    private void testCacheRows(Jedis conn)
+            throws InterruptedException {
         System.out.println("\n----- testCacheRows -----");
         System.out.println("First, let's schedule caching of itemX every 5 seconds");
         scheduleRowCache(conn, "itemX", 5);
         System.out.println("Our schedule looks like:");
         Set<Tuple> s = conn.zrangeWithScores("schedule:", 0, -1);
-        for (Tuple tuple : s){
+        for (Tuple tuple : s) {
             System.out.println("  " + tuple.getElement() + ", " + tuple.getScore());
         }
         assert s.size() != 0;
@@ -139,17 +131,18 @@ public class Chapter02 {
 
         thread.quit();
         Thread.sleep(2000);
-        if (thread.isAlive()){
+        if (thread.isAlive()) {
             throw new RuntimeException("The database caching thread is still alive?!?");
         }
     }
 
-    public void testCacheRequest(Jedis conn) {
+    private void testCacheRequest(Jedis conn) {
         System.out.println("\n----- testCacheRequest -----");
         String token = UUID.randomUUID().toString();
 
-        Callback callback = new Callback(){
-            public String call(String request){
+        Callback callback = new Callback() {
+            @Override
+            public String call(String request) {
                 return "content for " + request;
             }
         };
@@ -173,11 +166,17 @@ public class Chapter02 {
         assert !canCache(conn, "http://test.com/?item=itemX&_=1234536");
     }
 
-    public String checkToken(Jedis conn, String token) {
+    /**
+     * 检查用户是否登录,返回用户id
+     * @param conn
+     * @param token
+     * @return
+     */
+    private String checkToken(Jedis conn, String token) {
         return conn.hget("login:", token);
     }
 
-    public void updateToken(Jedis conn, String token, String user, String item) {
+    private void updateToken(Jedis conn, String token, String user, String item) {
         long timestamp = System.currentTimeMillis() / 1000;
         conn.hset("login:", token, user);
         conn.zadd("recent:", timestamp, token);
@@ -188,7 +187,7 @@ public class Chapter02 {
         }
     }
 
-    public void addToCart(Jedis conn, String session, String item, int count) {
+    private void addToCart(Jedis conn, String session, String item, int count) {
         if (count <= 0) {
             conn.hdel("cart:" + session, item);
         } else {
@@ -196,20 +195,20 @@ public class Chapter02 {
         }
     }
 
-    public void scheduleRowCache(Jedis conn, String rowId, int delay) {
+    private void scheduleRowCache(Jedis conn, String rowId, int delay) {
         conn.zadd("delay:", delay, rowId);
         conn.zadd("schedule:", System.currentTimeMillis() / 1000, rowId);
     }
 
-    public String cacheRequest(Jedis conn, String request, Callback callback) {
-        if (!canCache(conn, request)){
+    private String cacheRequest(Jedis conn, String request, Callback callback) {
+        if (!canCache(conn, request)) {
             return callback != null ? callback.call(request) : null;
         }
 
         String pageKey = "cache:" + hashRequest(request);
         String content = conn.get(pageKey);
 
-        if (content == null && callback != null){
+        if (content == null && callback != null) {
             content = callback.call(request);
             conn.setex(pageKey, 300, content);
         }
@@ -217,12 +216,12 @@ public class Chapter02 {
         return content;
     }
 
-    public boolean canCache(Jedis conn, String request) {
+    private boolean canCache(Jedis conn, String request) {
         try {
             URL url = new URL(request);
-            HashMap<String,String> params = new HashMap<String,String>();
-            if (url.getQuery() != null){
-                for (String param : url.getQuery().split("&")){
+            HashMap<String, String> params = new HashMap<String, String>();
+            if (url.getQuery() != null) {
+                for (String param : url.getQuery().split("&")) {
                     String[] pair = param.split("=", 2);
                     params.put(pair[0], pair.length == 2 ? pair[1] : null);
                 }
@@ -234,51 +233,50 @@ public class Chapter02 {
             }
             Long rank = conn.zrank("viewed:", itemId);
             return rank != null && rank < 10000;
-        }catch(MalformedURLException mue){
+        } catch (MalformedURLException mue) {
             return false;
         }
     }
 
-    public boolean isDynamic(Map<String,String> params) {
+    private boolean isDynamic(Map<String, String> params) {
         return params.containsKey("_");
     }
 
-    public String extractItemId(Map<String,String> params) {
+    private String extractItemId(Map<String, String> params) {
         return params.get("item");
     }
 
-    public String hashRequest(String request) {
+    private String hashRequest(String request) {
         return String.valueOf(request.hashCode());
     }
 
-    public interface Callback {
+    private interface Callback {
         public String call(String request);
     }
 
-    public class CleanSessionsThread
-        extends Thread
-    {
+    private class CleanSessionsThread extends Thread {
         private Jedis conn;
         private int limit;
         private boolean quit;
 
-        public CleanSessionsThread(int limit) {
-            this.conn = new Jedis("localhost");
+        private CleanSessionsThread(int limit) {
+            this.conn = new Jedis("192.168.74.139", 6379);
             this.conn.select(15);
             this.limit = limit;
         }
 
-        public void quit() {
+        private void quit() {
             quit = true;
         }
 
+        @Override
         public void run() {
             while (!quit) {
                 long size = conn.zcard("recent:");
-                if (size <= limit){
+                if (size <= limit) {
                     try {
                         sleep(1000);
-                    }catch(InterruptedException ie){
+                    } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                     }
                     continue;
@@ -300,28 +298,29 @@ public class Chapter02 {
         }
     }
 
-    public class CleanFullSessionsThread extends Thread {
+    private class CleanFullSessionsThread extends Thread {
         private Jedis conn;
         private int limit;
         private boolean quit;
 
-        public CleanFullSessionsThread(int limit) {
-            this.conn = new Jedis("localhost");
+        private CleanFullSessionsThread(int limit) {
+            this.conn = new Jedis("192.168.74.139", 6379);
             this.conn.select(15);
             this.limit = limit;
         }
 
-        public void quit() {
+        private void quit() {
             quit = true;
         }
 
+        @Override
         public void run() {
             while (!quit) {
                 long size = conn.zcard("recent:");
-                if (size <= limit){
+                if (size <= limit) {
                     try {
                         sleep(1000);
-                    }catch(InterruptedException ie){
+                    } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                     }
                     continue;
@@ -344,31 +343,30 @@ public class Chapter02 {
         }
     }
 
-    public class CacheRowsThread
-        extends Thread
-    {
+    private class CacheRowsThread extends Thread {
         private Jedis conn;
         private boolean quit;
 
-        public CacheRowsThread() {
-            this.conn = new Jedis("localhost");
+        private CacheRowsThread() {
+            this.conn = new Jedis("192.168.74.139", 6379);
             this.conn.select(15);
         }
 
-        public void quit() {
+        private void quit() {
             quit = true;
         }
 
+        @Override
         public void run() {
             Gson gson = new Gson();
-            while (!quit){
+            while (!quit) {
                 Set<Tuple> range = conn.zrangeWithScores("schedule:", 0, 0);
                 Tuple next = range.size() > 0 ? range.iterator().next() : null;
                 long now = System.currentTimeMillis() / 1000;
-                if (next == null || next.getScore() > now){
+                if (next == null || next.getScore() > now) {
                     try {
                         sleep(50);
-                    }catch(InterruptedException ie){
+                    } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                     }
                     continue;
@@ -390,18 +388,18 @@ public class Chapter02 {
         }
     }
 
-    public static class Inventory {
+    private static class Inventory {
         private String id;
         private String data;
         private long time;
 
-        private Inventory (String id) {
+        private Inventory(String id) {
             this.id = id;
             this.data = "data to cache...";
             this.time = System.currentTimeMillis() / 1000;
         }
 
-        public static Inventory get(String id) {
+        private static Inventory get(String id) {
             return new Inventory(id);
         }
     }
